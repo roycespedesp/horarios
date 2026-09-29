@@ -1,5 +1,5 @@
 const H = globalThis.Horario;
-const STORAGE_KEY = "horario-octubre-2026-ximena-4dias";
+const STORAGE_KEY = "horario-octubre-2026-feriado-dia";
 
 const weekMeta = [
   { from: 1, to: 4, label: "1–4 · 1 día y 1 noche" },
@@ -350,7 +350,7 @@ function clearShifts() {
 
 function resetOff() {
   board = applyDefaultOff(blankBoard());
-  feriadoEl.value = "ND";
+  feriadoEl.value = "DD";
   generate();
 }
 

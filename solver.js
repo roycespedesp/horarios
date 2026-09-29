@@ -331,7 +331,7 @@ function solveWeek(days, off, locks, carryNight, quotas, seed = 1) {
 
 function holidayLocks() {
   return {
-    Leady: { [HOLIDAY]: "N" },
+    Leady: { [HOLIDAY]: "D" },
     Ximena: { [HOLIDAY]: "D" },
   };
 }
