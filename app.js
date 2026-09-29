@@ -1,8 +1,7 @@
 const H = globalThis.Horario;
-const STORAGE_KEY = "horario-octubre-2026-feriado-dia";
+const STORAGE_KEY = "horario-octubre-2026-semanas-2y2";
 
 const weekMeta = [
-  { from: 1, to: 4, label: "1–4 · 1 día y 1 noche" },
   { from: 5, to: 11, label: "5–11 · 2 día y 2 noche" },
   { from: 12, to: 18, label: "12–18 · 2 día y 2 noche" },
   { from: 19, to: 25, label: "19–25 · 2 día y 2 noche" },
@@ -78,6 +77,11 @@ function monthCounts(person) {
     if (board[person][date] === "D") day++;
     if (board[person][date] === "N") night++;
   }
+  for (const lead of H.LEAD_DAYS) {
+    const shift = leadShift(person, lead.date);
+    if (shift === "D") day++;
+    if (shift === "N") night++;
+  }
   return { day, night };
 }
 
@@ -142,9 +146,9 @@ function render() {
   corner.textContent = "Mes";
   weekRow.appendChild(corner);
   const leadHead = document.createElement("th");
-  leadHead.colSpan = H.LEAD_DAYS.length;
+  leadHead.colSpan = H.LEAD_DAYS.length + 4;
   leadHead.className = "lead-head";
-  leadHead.textContent = "28–30 set · cuaderno";
+  leadHead.textContent = "28 set – 4 · 2 día y 2 noche";
   weekRow.appendChild(leadHead);
   for (const week of weekMeta) {
     const th = document.createElement("th");
@@ -191,8 +195,8 @@ function render() {
     const name = document.createElement("td");
     name.className = "name";
     const expected = person === "Ximena"
-      ? totals.day === 19 && totals.night === 0
-      : totals.day === 9 && (totals.night === 9 || totals.night === 10);
+      ? totals.day === 20 && totals.night === 0
+      : totals.day === 10 && totals.night === 10;
     name.innerHTML = `<b>${person}</b><span class="${expected ? "" : "warn"}">${totals.day} día · ${totals.night} noche</span>`;
     tr.appendChild(name);
 
@@ -310,7 +314,7 @@ function renderStatus() {
   const issues = H.validateBoard(board, off);
   statusEl.classList.toggle("bad", issues.length > 0);
   if (!issues.length) {
-    statusEl.textContent = "Ximena hace 4 turnos de día por semana y ninguna noche. Del 1 al 4 está libre el 1, así que ahí hace 3. El resto cubre las noches.";
+    statusEl.textContent = "Cada semana, del 28 de setiembre al 31, todos tienen 2 días y 2 noches. Ximena tiene 4 días y ninguna noche.";
     return;
   }
   statusEl.innerHTML = `<strong>Hay ${issues.length} aviso${issues.length === 1 ? "" : "s"}.</strong><ul>${issues
@@ -362,14 +366,34 @@ function xmlEscape(value) {
     .replace(/"/g, "&quot;");
 }
 
-function excelCell(value, style) {
+function excelCell(value, style, mergeAcross) {
   const type = typeof value === "number" ? "Number" : "String";
   const styleAttr = style ? ` ss:StyleID="${style}"` : "";
+  const mergeAttr = mergeAcross ? ` ss:MergeAcross="${mergeAcross}"` : "";
   if (value === "" || value === null || value === undefined) {
-    return `<Cell${styleAttr}/>`;
+    return `<Cell${mergeAttr}${styleAttr}/>`;
   }
-  return `<Cell${styleAttr}><Data ss:Type="${type}">${xmlEscape(value)}</Data></Cell>`;
+  return `<Cell${mergeAttr}${styleAttr}><Data ss:Type="${type}">${xmlEscape(value)}</Data></Cell>`;
 }
+
+const EXCEL_NAMES = {
+  Mayra: "Mayra Cartas",
+  Pamela: "Pamela Luna",
+  Ximena: "Ximena Galvez",
+  Mariel: "Mariel Espinoza",
+  Gabriela: "Maria Fernanda",
+  Maite: "Gianella Lujan",
+  Leady: "Leady Aliaga",
+  Miguel: "Miguel Angel",
+};
+
+const EXCEL_WEEKS = [
+  { label: "HORARIO 1ERA SEMANA", span: 7 },
+  { label: "HORARIO 2DA SEMANA", span: 7 },
+  { label: "HORARIO 3ERA SEMANA", span: 7 },
+  { label: "HORARIO 4TA SEMANA", span: 7 },
+  { label: "HORARIO 5TA SEMANA", span: 6 },
+];
 
 function shiftLabel(shift) {
   if (shift === "D") return "Día";
@@ -378,86 +402,89 @@ function shiftLabel(shift) {
   return "";
 }
 
-function shiftStyle(shift, day) {
+function shiftStyle(shift) {
   if (shift === "D") return "dia";
   if (shift === "N") return "noche";
   if (shift === "L") return "libre";
-  if (day.holiday) return "feriado";
-  if (day.weekend) return "finde";
-  return "";
+  return "vacio";
+}
+
+function excelColumns() {
+  const lead = H.LEAD_DAYS.map((day) => ({
+    label: `${day.date} set`,
+    weekday: day.weekday,
+    holiday: false,
+    shift(person) {
+      return leadShift(person, day.date);
+    },
+  }));
+  const october = H.octoberDays().map((day) => ({
+    label: day.holiday ? `${day.date} feriado` : String(day.date),
+    weekday: day.weekday,
+    holiday: day.holiday,
+    shift(person) {
+      return board[person][day.date];
+    },
+  }));
+  return lead.concat(october);
 }
 
 function buildExcel() {
-  const days = H.octoberDays();
-  const leadHeader = H.LEAD_DAYS.map((day) => excelCell(`${day.date} set`, "setiembre")).join("");
-  const leadWeekdays = H.LEAD_DAYS.map((day) => excelCell(day.weekday, "setiembre")).join("");
-  const header = days.map((day) => excelCell(day.holiday ? `${day.date} feriado` : day.date, "encabezado")).join("");
-  const weekdays = days.map((day) => excelCell(day.weekday, "encabezado")).join("");
+  const columns = excelColumns();
+  const weekRow = EXCEL_WEEKS.map((week) => excelCell(week.label, "semana", week.span - 1)).join("");
+  const dateRow = columns.map((column) => excelCell(column.label, column.holiday ? "fechaFeriado" : "fecha")).join("");
+  const weekdayRow = columns.map((column) => excelCell(column.weekday, "dow")).join("");
   const peopleRows = H.STAFF.map((person) => {
-    const leadCells = H.LEAD_DAYS.map((day) => excelCell(shiftLabel(leadShift(person, day.date)), shiftStyle(leadShift(person, day.date), day))).join("");
-    const cells = days.map((day) => excelCell(shiftLabel(board[person][day.date]), shiftStyle(board[person][day.date], day))).join("");
-    return `<Row>${excelCell(person, "nombre")}${leadCells}${cells}</Row>`;
+    const cells = columns.map((column) => excelCell(shiftLabel(column.shift(person)), shiftStyle(column.shift(person)))).join("");
+    return `<Row>${excelCell(EXCEL_NAMES[person] || person, "nombre")}${cells}</Row>`;
   }).join("");
-
-  const leadDayCount = H.LEAD_DAYS.map((day) => {
-    const total = H.STAFF.filter((person) => leadShift(person, day.date) === "D").length;
+  const dayCount = columns.map((column) => {
+    const total = H.STAFF.filter((person) => column.shift(person) === "D").length;
     return excelCell(total, "cuenta");
   }).join("");
-  const leadNightCount = H.LEAD_DAYS.map((day) => {
-    const total = H.STAFF.filter((person) => leadShift(person, day.date) === "N").length;
-    return excelCell(total, "cuenta");
-  }).join("");
-  const dayCount = days.map((day) => {
-    const total = H.STAFF.filter((person) => board[person][day.date] === "D").length;
-    return excelCell(total, "cuenta");
-  }).join("");
-  const nightCount = days.map((day) => {
-    const total = H.STAFF.filter((person) => board[person][day.date] === "N").length;
+  const nightCount = columns.map((column) => {
+    const total = H.STAFF.filter((person) => column.shift(person) === "N").length;
     return excelCell(total, "cuenta");
   }).join("");
 
-  const leadRoster = H.LEAD_DAYS.map((day) => {
-    const dayNames = H.STAFF.filter((person) => leadShift(person, day.date) === "D");
-    const nightNames = H.STAFF.filter((person) => leadShift(person, day.date) === "N");
-    return `<Row>${excelCell(`${day.date} set`, "setiembre")}${excelCell(day.weekday)}${excelCell("Cuaderno")}${excelCell(dayNames.join(", "), "dia")}${excelCell(nightNames.join(", "), "noche")}</Row>`;
-  }).join("");
-  const rosterRows = days.map((day) => {
-    const dayNames = H.STAFF.filter((person) => board[person][day.date] === "D");
-    const nightNames = H.STAFF.filter((person) => board[person][day.date] === "N");
-    return `<Row>${excelCell(day.date, "encabezado")}${excelCell(day.weekday)}${excelCell(day.holiday ? "Feriado" : "")}${excelCell(dayNames.join(", "), "dia")}${excelCell(nightNames.join(", "), "noche")}</Row>`;
+  const rosterRows = columns.map((column) => {
+    const dayNames = H.STAFF.filter((person) => column.shift(person) === "D").map((person) => EXCEL_NAMES[person] || person);
+    const nightNames = H.STAFF.filter((person) => column.shift(person) === "N").map((person) => EXCEL_NAMES[person] || person);
+    return `<Row>${excelCell(column.label, column.holiday ? "fechaFeriado" : "fecha")}${excelCell(column.weekday, "dow")}${excelCell(column.holiday ? "Feriado" : column.label.endsWith("set") ? "Cuaderno" : "", "vacio")}${excelCell(dayNames.join(", "), "dia")}${excelCell(nightNames.join(", "), "noche")}</Row>`;
   }).join("");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
 <Styles>
-<Style ss:ID="encabezado"><Font ss:Bold="1"/><Interior ss:Color="#F7FAF8" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
-<Style ss:ID="nombre"><Font ss:Bold="1"/><Alignment ss:Vertical="Center"/></Style>
-<Style ss:ID="dia"><Font ss:Bold="1" ss:Color="#146B45"/><Interior ss:Color="#DFF3E8" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
-<Style ss:ID="noche"><Font ss:Bold="1" ss:Color="#243E86"/><Interior ss:Color="#E4EBFA" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="semana"><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="12"/><Interior ss:Color="#1A1A1A" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="fecha"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#2B2B2B" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="fechaFeriado"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#C0392B" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="dow"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#5C5C5C" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="nombre"><Font ss:Bold="1" ss:Color="#1C2B33"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:Horizontal="Left"/></Style>
+<Style ss:ID="dia"><Font ss:Bold="1" ss:Color="#146B45"/><Interior ss:Color="#D8F3E4" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="noche"><Font ss:Bold="1" ss:Color="#243E86"/><Interior ss:Color="#E3E9FB" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
 <Style ss:ID="libre"><Font ss:Bold="1" ss:Color="#6D5A08"/><Interior ss:Color="#FFE56A" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
-<Style ss:ID="feriado"><Interior ss:Color="#FDE8E2" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
-<Style ss:ID="finde"><Interior ss:Color="#F6F4EE" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
-<Style ss:ID="cuenta"><Font ss:Bold="1"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
-<Style ss:ID="setiembre"><Font ss:Bold="1"/><Interior ss:Color="#F3EFE4" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="vacio"><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="cuenta"><Font ss:Bold="1" ss:Color="#1C2B33"/><Interior ss:Color="#F2F2F2" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="cuentaNombre"><Font ss:Bold="1" ss:Color="#1C2B33"/><Interior ss:Color="#F2F2F2" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:Horizontal="Left"/></Style>
 </Styles>
 <Worksheet ss:Name="Horario">
 <Table>
-<Column ss:Width="110"/>
-${H.LEAD_DAYS.map(() => '<Column ss:Width="78"/>').join("")}
-${days.map(() => '<Column ss:Width="78"/>').join("")}
-<Row>${excelCell("Persona", "encabezado")}${leadHeader}${header}</Row>
-<Row>${excelCell("", "encabezado")}${leadWeekdays}${weekdays}</Row>
+<Column ss:Width="150"/>
+${columns.map(() => '<Column ss:Width="72"/>').join("")}
+<Row ss:Height="24">${excelCell("", "semana")}${weekRow}</Row>
+<Row ss:Height="20">${excelCell("Persona", "fecha")}${dateRow}</Row>
+<Row ss:Height="18">${excelCell("", "dow")}${weekdayRow}</Row>
 ${peopleRows}
-<Row>${excelCell("En turno día", "nombre")}${leadDayCount}${dayCount}</Row>
-<Row>${excelCell("En turno noche", "nombre")}${leadNightCount}${nightCount}</Row>
+<Row>${excelCell("En turno día", "cuentaNombre")}${dayCount}</Row>
+<Row>${excelCell("En turno noche", "cuentaNombre")}${nightCount}</Row>
 </Table>
 </Worksheet>
 <Worksheet ss:Name="Por día">
 <Table>
-<Column ss:Width="60"/><Column ss:Width="70"/><Column ss:Width="80"/><Column ss:Width="220"/><Column ss:Width="220"/>
-<Row>${excelCell("Fecha", "encabezado")}${excelCell("Día", "encabezado")}${excelCell("Nota", "encabezado")}${excelCell("Turno día", "encabezado")}${excelCell("Turno noche", "encabezado")}</Row>
-${leadRoster}
+<Column ss:Width="80"/><Column ss:Width="70"/><Column ss:Width="90"/><Column ss:Width="280"/><Column ss:Width="280"/>
+<Row>${excelCell("Fecha", "fecha")}${excelCell("Día", "fecha")}${excelCell("Nota", "fecha")}${excelCell("Turno día", "fecha")}${excelCell("Turno noche", "fecha")}</Row>
 ${rosterRows}
 </Table>
 </Worksheet>

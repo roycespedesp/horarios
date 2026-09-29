@@ -42,7 +42,7 @@ const NOTEBOOK_LEAD = {
   Gabriela: { 29: "N" },
   Maite: { 29: "N" },
   Leady: { 29: "D", 30: "D" },
-  Miguel: { 28: "D", 29: "D", 30: "D" },
+  Miguel: { 28: "D", 29: "D" },
 };
 
 function leadShift(person, date) {
@@ -91,29 +91,43 @@ function octoberWeeks(year = 2026) {
   return weeks;
 }
 
-function quotaForWeek(dates) {
-  if (dates.length <= 4) return { day: 1, night: 1 };
+function quotaForWeek() {
   return { day: 2, night: 2 };
 }
 
 function quotaForPerson(person, dates, daysOff) {
-  const quota = quotaForWeek(dates);
-  if (!DAY_ONLY.has(person)) return quota;
+  if (!DAY_ONLY.has(person)) return quotaForWeek();
   const off = new Set((daysOff && daysOff[person]) || []);
   const available = dates.filter((date) => !off.has(date)).length;
   return { day: Math.min(4, available), night: 0 };
 }
 
-function quotasForWeek(dates, extraNightPerson, daysOff) {
+function quotasForWeek(dates, daysOff) {
   const quotas = {};
   for (const person of STAFF) quotas[person] = quotaForPerson(person, dates, daysOff);
-  if (extraNightPerson && !DAY_ONLY.has(extraNightPerson)) {
-    quotas[extraNightPerson] = {
-      day: quotas[extraNightPerson].day,
-      night: quotas[extraNightPerson].night + 1,
-    };
-  }
   return quotas;
+}
+
+/** Semanas reales: la primera arranca el lunes 28 de setiembre. */
+function scheduleWeeks(year = 2026) {
+  const first = [
+    { id: 10028, month: 9, date: 28 },
+    { id: 10029, month: 9, date: 29 },
+    { id: 10030, month: 9, date: 30 },
+    { id: 10031, month: 10, date: 1 },
+    { id: 10032, month: 10, date: 2 },
+    { id: 10033, month: 10, date: 3 },
+    { id: 10034, month: 10, date: 4 },
+  ];
+  const rest = octoberWeeks(year)
+    .slice(1)
+    .map((dates) => dates.map((date) => ({ id: date, month: 10, date })));
+  return [first, ...rest];
+}
+
+function octoberDateForSlot(slot) {
+  if (slot.month === 10) return slot.date;
+  return null;
 }
 
 function combinations(items, k) {
@@ -361,8 +375,8 @@ function applyDaysOff(board, daysOff) {
 function solveMonth(daysOff, year = 2026, locks = null) {
   const board = emptyBoard();
   applyDaysOff(board, daysOff);
-  const weeks = octoberWeeks(year);
-  const carry = openingCarry();
+  const weeks = scheduleWeeks(year);
+  let carry = Object.fromEntries(STAFF.map((person) => [person, false]));
   const report = [];
   if (!locks) locks = holidayLocks();
   for (const person of STAFF) {
@@ -379,73 +393,75 @@ function solveMonth(daysOff, year = 2026, locks = null) {
     }
   }
 
-  function weekLocksFor(dates) {
+  function placeWeek(sourceBoard, sourceCarry, slots) {
+    const ids = slots.map((slot) => slot.id);
+    const off = {};
     const weekLocks = {};
     for (const person of STAFF) {
+      off[person] = [];
       weekLocks[person] = {};
-      for (const date of dates) {
-        if (locks[person] && locks[person][date]) {
-          if ((daysOff[person] || []).includes(date)) {
-            return { error: `${person} está libre el ${date} y también debe trabajar el feriado.` };
-          }
-          weekLocks[person][date] = locks[person][date];
+      for (const slot of slots) {
+        if (slot.month === 9) {
+          const shift = leadShift(person, slot.date);
+          if (shift === "D" || shift === "N") weekLocks[person][slot.id] = shift;
+          else off[person].push(slot.id);
+        } else if ((daysOff[person] || []).includes(slot.date)) {
+          off[person].push(slot.id);
+        } else if (locks[person] && locks[person][slot.date]) {
+          weekLocks[person][slot.id] = locks[person][slot.date];
         }
       }
     }
-    return { weekLocks };
-  }
-
-  function placeWeek(sourceBoard, sourceCarry, dates, extra) {
-    const prepared = weekLocksFor(dates);
-    if (prepared.error) return { ok: false, reason: prepared.error };
-    const quotas = quotasForWeek(dates, extra, daysOff);
-    const solved = solveWeek(
-      dates,
-      daysOff,
-      prepared.weekLocks,
-      sourceCarry,
-      quotas,
-      40 + dates[0] * 13 + (extra ? extra.length : 0)
-    );
+    const quotas = quotasForWeek(ids, off);
+    const solved = solveWeek(ids, off, weekLocks, sourceCarry, quotas, 40 + slots[0].id);
     if (!solved.ok) {
-      return { ok: false, reason: `Semana del ${dates[0]} al ${dates[dates.length - 1]}: ${solved.reason}` };
+      const from = slots[0];
+      const to = slots[slots.length - 1];
+      const fromLabel = from.month === 9 ? `${from.date} set` : String(from.date);
+      const toLabel = to.month === 9 ? `${to.date} set` : String(to.date);
+      return { ok: false, reason: `Semana del ${fromLabel} al ${toLabel}: ${solved.reason}` };
     }
     const nextBoard = emptyBoard();
+    const idToDate = Object.fromEntries(slots.map((slot) => [slot.id, octoberDateForSlot(slot)]));
     for (const person of STAFF) {
       for (let date = 1; date <= 31; date++) nextBoard[person][date] = sourceBoard[person][date];
       const pat = solved.chosen[person];
-      for (const d of pat.D) nextBoard[person][d] = "D";
-      for (const n of pat.N) nextBoard[person][n] = "N";
+      for (const id of pat.D) {
+        const date = idToDate[id];
+        if (date) nextBoard[person][date] = "D";
+      }
+      for (const id of pat.N) {
+        const date = idToDate[id];
+        if (date) nextBoard[person][date] = "N";
+      }
     }
     const nextCarry = {};
-    const last = dates[dates.length - 1];
+    const last = slots[slots.length - 1].id;
     for (const person of STAFF) nextCarry[person] = solved.chosen[person].N.includes(last);
-    return { ok: true, board: nextBoard, carry: nextCarry, solved };
+    return { ok: true, board: nextBoard, carry: nextCarry };
   }
 
-  const shortExtras = ["Pamela", "Miguel", "Gabriela", "Leady", "Maite", "Mayra", "Mariel"];
-  let lastReason = "No encontré una combinación que cubra todos los turnos.";
-  for (const extra of shortExtras) {
-    let current = { board, carry };
-    let failed = false;
-    for (const dates of weeks) {
-      const step = placeWeek(current.board, current.carry, dates, dates.length <= 4 ? extra : null);
-      if (!step.ok) {
-        lastReason = step.reason;
-        failed = true;
-        break;
-      }
-      current = step;
-    }
-    if (!failed) return { ok: true, board: current.board, report, reason: "" };
+  let current = { board, carry };
+  for (const slots of weeks) {
+    const step = placeWeek(current.board, current.carry, slots);
+    if (!step.ok) return { ok: false, board, report, reason: step.reason };
+    current = step;
   }
 
-  return { ok: false, board, report, reason: lastReason };
+  return { ok: true, board: current.board, report, reason: "" };
+}
+
+function slotShift(board, person, slot) {
+  if (slot.month === 9) return leadShift(person, slot.date);
+  return board[person][slot.date] || "";
+}
+
+function slotLabel(slot) {
+  return slot.month === 9 ? `${slot.date} set` : String(slot.date);
 }
 
 function validateBoard(board, daysOff, year = 2026) {
   const issues = [];
-  const weeks = octoberWeeks(year);
   for (const person of STAFF) {
     for (let date = 1; date <= 31; date++) {
       const shift = board[person][date];
@@ -500,43 +516,46 @@ function validateBoard(board, daysOff, year = 2026) {
     }
   }
 
-  for (const dates of weeks) {
-    const counts = {};
+  for (const slots of scheduleWeeks(year)) {
+    const ids = slots.map((slot) => slot.id);
+    const off = {};
+    for (const person of STAFF) {
+      off[person] = [];
+      for (const slot of slots) {
+        if (slot.month === 9 && !leadShift(person, slot.date)) off[person].push(slot.id);
+        if (slot.month === 10 && (daysOff[person] || []).includes(slot.date)) off[person].push(slot.id);
+      }
+    }
+    const from = slotLabel(slots[0]);
+    const to = slotLabel(slots[slots.length - 1]);
     for (const person of STAFF) {
       let d = 0;
       let n = 0;
-      for (const date of dates) {
-        if (board[person][date] === "D") d++;
-        if (board[person][date] === "N") n++;
+      for (const slot of slots) {
+        const shift = slotShift(board, person, slot);
+        if (shift === "D") d++;
+        if (shift === "N") n++;
       }
-      counts[person] = { d, n };
-      const quota = quotaForPerson(person, dates, daysOff);
-      const nightOk = dates.length <= 4 && !DAY_ONLY.has(person) ? n === 1 || n === 2 : n === quota.night;
-      if (d !== quota.day || !nightOk) {
+      const quota = quotaForPerson(person, ids, off);
+      if (d !== quota.day || n !== quota.night) {
         issues.push(
-          `${person} en la semana del ${dates[0]} al ${dates[dates.length - 1]} tiene ${d} día y ${n} noche (corresponde ${quota.day} día y ${quota.night} noche).`
+          `${person} en la semana del ${from} al ${to} tiene ${d} día y ${n} noche (corresponde ${quota.day} día y ${quota.night} noche).`
         );
       }
     }
-    if (dates.length <= 4) {
-      const extras = STAFF.filter((person) => counts[person].n === 2);
-      if (extras.length !== 1) {
-        issues.push(
-          `En la semana del ${dates[0]} al ${dates[dates.length - 1]} hace falta una noche extra para cubrir el turno que Ximena no hace.`
-        );
-      }
-    }
-    for (const date of dates) {
+    for (const slot of slots) {
       let d = 0;
       let n = 0;
       for (const person of STAFF) {
-        if (board[person][date] === "D") d++;
-        if (board[person][date] === "N") n++;
+        const shift = slotShift(board, person, slot);
+        if (shift === "D") d++;
+        if (shift === "N") n++;
       }
-      if (d < 2) issues.push(`El ${date} el turno día tiene ${d} persona(s); el mínimo es 2.`);
-      if (n < 2) issues.push(`El ${date} el turno noche tiene ${n} persona(s); el mínimo es 2.`);
-      if (d > 3) issues.push(`El ${date} el turno día tiene ${d} personas; el máximo previsto es 3.`);
-      if (n > 3) issues.push(`El ${date} el turno noche tiene ${n} personas; el máximo previsto es 3.`);
+      const label = slotLabel(slot);
+      if (d < 2) issues.push(`El ${label} el turno día tiene ${d} persona(s); el mínimo es 2.`);
+      if (n < 2) issues.push(`El ${label} el turno noche tiene ${n} persona(s); el mínimo es 2.`);
+      if (d > 3) issues.push(`El ${label} el turno día tiene ${d} personas; el máximo previsto es 3.`);
+      if (n > 3) issues.push(`El ${label} el turno noche tiene ${n} personas; el máximo previsto es 3.`);
     }
   }
   return issues;
