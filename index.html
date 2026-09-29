@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Horario de octubre · área médica</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="top">
+      <div>
+        <h1>Horario de octubre</h1>
+        <p class="lede">Turno día y turno noche para el área médica. Cada persona hace 2 días y 2 noches por semana, sin encadenar una noche con el día siguiente.</p>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="primary" id="generar">Generar horario</button>
+        <button type="button" id="limpiar">Quitar turnos</button>
+        <button type="button" id="restablecer">Volver a los libres del cuaderno</button>
+        <button type="button" id="imprimir">Imprimir</button>
+      </div>
+    </header>
+
+    <section class="panel rules">
+      <div>
+        <ul>
+          <li><strong>2 turnos día y 2 turnos noche</strong> en cada semana del lunes al domingo. Del 1 al 4 solo hay cuatro días, así que esa semana toca 1 y 1.</li>
+          <li>Pueden ir <strong>seguidos o intercalados</strong>. No se puede trabajar la noche y, al día siguiente, el día: serían 24 horas.</li>
+          <li>Cada día salen <strong>2 o 3 personas</strong> de día y 2 o 3 de noche.</li>
+          <li>El amarillo es <strong>día libre</strong> pedido en el cuaderno. Un clic en la celda recorre: vacío, día, noche y libre. Después pulsa Generar.</li>
+        </ul>
+      </div>
+      <div class="feriado-box">
+        <label for="feriado">El 8 es feriado. Leady y Ximena trabajan sí o sí.</label>
+        <select id="feriado">
+          <option value="DN">Leady de día y Ximena de noche</option>
+          <option value="ND">Leady de noche y Ximena de día</option>
+          <option value="DD">Las dos de día</option>
+          <option value="NN">Las dos de noche</option>
+        </select>
+      </div>
+    </section>
+
+    <p class="legend">
+      <span><i class="swatch d">D</i>Turno día</span>
+      <span><i class="swatch n">N</i>Turno noche</span>
+      <span><i class="swatch l">L</i>Libre</span>
+    </p>
+    <div id="status" class="status" role="status"></div>
+    <div class="panel grid-wrap" id="grid"></div>
+
+    <h2 class="roster-title">Quién cubre cada día</h2>
+    <div class="roster" id="roster"></div>
+
+    <p class="note">Libres tomados del cuaderno: Ximena el 1; Mayra el 5, 10 y 18; Leady el 5; Maite el 7; Manel el 10, 11, 19 y 24; Gabriela el 11, 12, 19, 30 y 31. Si algún resaltado no coincide, márcalo o quítalo en el cuadro y vuelve a generar. El horario se guarda en este navegador.</p>
+  </main>
+  <script src="solver.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
