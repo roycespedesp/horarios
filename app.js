@@ -1,5 +1,5 @@
 const H = globalThis.Horario;
-const STORAGE_KEY = "horario-octubre-2026-ximena-dia";
+const STORAGE_KEY = "horario-octubre-2026-ximena-4dias";
 
 const weekMeta = [
   { from: 1, to: 4, label: "1–4 · 1 día y 1 noche" },
@@ -191,7 +191,7 @@ function render() {
     const name = document.createElement("td");
     name.className = "name";
     const expected = person === "Ximena"
-      ? totals.day === 9 && totals.night === 0
+      ? totals.day === 19 && totals.night === 0
       : totals.day === 9 && (totals.night === 9 || totals.night === 10);
     name.innerHTML = `<b>${person}</b><span class="${expected ? "" : "warn"}">${totals.day} día · ${totals.night} noche</span>`;
     tr.appendChild(name);
@@ -310,7 +310,7 @@ function renderStatus() {
   const issues = H.validateBoard(board, off);
   statusEl.classList.toggle("bad", issues.length > 0);
   if (!issues.length) {
-    statusEl.textContent = "Ximena solo tiene turnos de día. El resto cubre las noches, octubre cumple las reglas y encaja con el 30 de setiembre.";
+    statusEl.textContent = "Ximena hace 4 turnos de día por semana y ninguna noche. Del 1 al 4 está libre el 1, así que ahí hace 3. El resto cubre las noches.";
     return;
   }
   statusEl.innerHTML = `<strong>Hay ${issues.length} aviso${issues.length === 1 ? "" : "s"}.</strong><ul>${issues

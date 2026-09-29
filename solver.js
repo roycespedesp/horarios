@@ -96,15 +96,17 @@ function quotaForWeek(dates) {
   return { day: 2, night: 2 };
 }
 
-function quotaForPerson(person, dates) {
+function quotaForPerson(person, dates, daysOff) {
   const quota = quotaForWeek(dates);
-  if (DAY_ONLY.has(person)) return { day: quota.day, night: 0 };
-  return quota;
+  if (!DAY_ONLY.has(person)) return quota;
+  const off = new Set((daysOff && daysOff[person]) || []);
+  const available = dates.filter((date) => !off.has(date)).length;
+  return { day: Math.min(4, available), night: 0 };
 }
 
-function quotasForWeek(dates, extraNightPerson) {
+function quotasForWeek(dates, extraNightPerson, daysOff) {
   const quotas = {};
-  for (const person of STAFF) quotas[person] = quotaForPerson(person, dates);
+  for (const person of STAFF) quotas[person] = quotaForPerson(person, dates, daysOff);
   if (extraNightPerson && !DAY_ONLY.has(extraNightPerson)) {
     quotas[extraNightPerson] = {
       day: quotas[extraNightPerson].day,
@@ -396,7 +398,7 @@ function solveMonth(daysOff, year = 2026, locks = null) {
   function placeWeek(sourceBoard, sourceCarry, dates, extra) {
     const prepared = weekLocksFor(dates);
     if (prepared.error) return { ok: false, reason: prepared.error };
-    const quotas = quotasForWeek(dates, extra);
+    const quotas = quotasForWeek(dates, extra, daysOff);
     const solved = solveWeek(
       dates,
       daysOff,
@@ -508,7 +510,7 @@ function validateBoard(board, daysOff, year = 2026) {
         if (board[person][date] === "N") n++;
       }
       counts[person] = { d, n };
-      const quota = quotaForPerson(person, dates);
+      const quota = quotaForPerson(person, dates, daysOff);
       const nightOk = dates.length <= 4 && !DAY_ONLY.has(person) ? n === 1 || n === 2 : n === quota.night;
       if (d !== quota.day || !nightOk) {
         issues.push(
