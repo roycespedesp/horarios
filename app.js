@@ -1,5 +1,5 @@
 const H = globalThis.Horario;
-const STORAGE_KEY = "horario-octubre-2026";
+const STORAGE_KEY = "horario-octubre-2026-fijo";
 
 const weekMeta = [
   { from: 1, to: 4, label: "1–4 · 1 día y 1 noche" },
@@ -185,14 +185,12 @@ function render() {
       if (shift === "L") classes.push("mark-l");
       if (bad.has(`${person}|${day.date}`)) classes.push("bad-cell");
       td.className = classes.join(" ");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "cell";
-      button.textContent = shift === "D" ? "D" : shift === "N" ? "N" : shift === "L" ? "L" : "";
+      const mark = document.createElement("span");
+      mark.className = "cell";
+      mark.textContent = shift === "D" ? "D" : shift === "N" ? "N" : shift === "L" ? "L" : "";
       const label = shift === "D" ? "turno día" : shift === "N" ? "turno noche" : shift === "L" ? "libre" : "sin turno";
-      button.title = `${person}, ${day.date} de octubre: ${label}. Clic para cambiar.`;
-      button.addEventListener("click", () => cycle(person, day.date));
-      td.appendChild(button);
+      mark.title = `${person}, ${day.date} de octubre: ${label}.`;
+      td.appendChild(mark);
       tr.appendChild(td);
     }
     body.appendChild(tr);
@@ -260,15 +258,6 @@ function renderStatus() {
     .slice(0, 8)
     .map((issue) => `<li>${issue}</li>`)
     .join("")}</ul>${issues.length > 8 ? `<p>Y ${issues.length - 8} más.</p>` : ""}`;
-}
-
-function cycle(person, date) {
-  const order = ["", "D", "N", "L"];
-  const current = board[person][date] || "";
-  const next = order[(order.indexOf(current) + 1) % order.length];
-  board[person][date] = next;
-  save();
-  render();
 }
 
 function generate() {

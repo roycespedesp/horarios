@@ -230,19 +230,16 @@ th {
 .holiday { background: var(--holiday); }
 
 .cell {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 32px;
-  padding: 0;
-  cursor: pointer;
   font-weight: 700;
   font-size: 12px;
-  border: 0;
-  background: transparent;
   color: inherit;
+  cursor: default;
 }
-
-.cell:hover { outline: 2px solid #16342c; outline-offset: -2px; }
 
 td.mark-d { background: var(--day-bg); color: var(--day); }
 td.mark-n { background: var(--night-bg); color: var(--night); }
