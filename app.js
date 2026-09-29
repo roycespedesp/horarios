@@ -295,10 +295,113 @@ function resetOff() {
   generate();
 }
 
+function xmlEscape(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function excelCell(value, style) {
+  const type = typeof value === "number" ? "Number" : "String";
+  const styleAttr = style ? ` ss:StyleID="${style}"` : "";
+  if (value === "" || value === null || value === undefined) {
+    return `<Cell${styleAttr}/>`;
+  }
+  return `<Cell${styleAttr}><Data ss:Type="${type}">${xmlEscape(value)}</Data></Cell>`;
+}
+
+function shiftLabel(shift) {
+  if (shift === "D") return "Día";
+  if (shift === "N") return "Noche";
+  if (shift === "L") return "Libre";
+  return "";
+}
+
+function shiftStyle(shift, day) {
+  if (shift === "D") return "dia";
+  if (shift === "N") return "noche";
+  if (shift === "L") return "libre";
+  if (day.holiday) return "feriado";
+  if (day.weekend) return "finde";
+  return "";
+}
+
+function buildExcel() {
+  const days = H.octoberDays();
+  const header = days.map((day) => excelCell(day.holiday ? `${day.date} feriado` : day.date, "encabezado")).join("");
+  const weekdays = days.map((day) => excelCell(day.weekday, "encabezado")).join("");
+  const peopleRows = H.STAFF.map((person) => {
+    const cells = days.map((day) => excelCell(shiftLabel(board[person][day.date]), shiftStyle(board[person][day.date], day))).join("");
+    return `<Row>${excelCell(person, "nombre")}${cells}</Row>`;
+  }).join("");
+
+  const dayCount = days.map((day) => {
+    const total = H.STAFF.filter((person) => board[person][day.date] === "D").length;
+    return excelCell(total, "cuenta");
+  }).join("");
+  const nightCount = days.map((day) => {
+    const total = H.STAFF.filter((person) => board[person][day.date] === "N").length;
+    return excelCell(total, "cuenta");
+  }).join("");
+
+  const rosterRows = days.map((day) => {
+    const dayNames = H.STAFF.filter((person) => board[person][day.date] === "D");
+    const nightNames = H.STAFF.filter((person) => board[person][day.date] === "N");
+    return `<Row>${excelCell(day.date, "encabezado")}${excelCell(day.weekday)}${excelCell(day.holiday ? "Feriado" : "")}${excelCell(dayNames.join(", "), "dia")}${excelCell(nightNames.join(", "), "noche")}</Row>`;
+  }).join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Styles>
+<Style ss:ID="encabezado"><Font ss:Bold="1"/><Interior ss:Color="#F7FAF8" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="nombre"><Font ss:Bold="1"/><Alignment ss:Vertical="Center"/></Style>
+<Style ss:ID="dia"><Font ss:Bold="1" ss:Color="#146B45"/><Interior ss:Color="#DFF3E8" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="noche"><Font ss:Bold="1" ss:Color="#243E86"/><Interior ss:Color="#E4EBFA" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="libre"><Font ss:Bold="1" ss:Color="#6D5A08"/><Interior ss:Color="#FFE56A" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="feriado"><Interior ss:Color="#FDE8E2" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="finde"><Interior ss:Color="#F6F4EE" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="cuenta"><Font ss:Bold="1"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+</Styles>
+<Worksheet ss:Name="Horario">
+<Table>
+<Column ss:Width="110"/>
+${days.map(() => '<Column ss:Width="78"/>').join("")}
+<Row>${excelCell("Persona", "encabezado")}${header}</Row>
+<Row>${excelCell("", "encabezado")}${weekdays}</Row>
+${peopleRows}
+<Row>${excelCell("En turno día", "nombre")}${dayCount}</Row>
+<Row>${excelCell("En turno noche", "nombre")}${nightCount}</Row>
+</Table>
+</Worksheet>
+<Worksheet ss:Name="Por día">
+<Table>
+<Column ss:Width="60"/><Column ss:Width="70"/><Column ss:Width="80"/><Column ss:Width="220"/><Column ss:Width="220"/>
+<Row>${excelCell("Fecha", "encabezado")}${excelCell("Día", "encabezado")}${excelCell("Nota", "encabezado")}${excelCell("Turno día", "encabezado")}${excelCell("Turno noche", "encabezado")}</Row>
+${rosterRows}
+</Table>
+</Worksheet>
+</Workbook>`;
+}
+
+function downloadExcel() {
+  const blob = new Blob([buildExcel()], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "horario-octubre-2026.xls";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+}
+
 document.querySelector("#generar").addEventListener("click", generate);
 document.querySelector("#limpiar").addEventListener("click", clearShifts);
 document.querySelector("#restablecer").addEventListener("click", resetOff);
 document.querySelector("#imprimir").addEventListener("click", () => window.print());
+document.querySelector("#excel").addEventListener("click", downloadExcel);
 
 const stored = load();
 if (stored) {
