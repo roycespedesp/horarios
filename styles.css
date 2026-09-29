@@ -179,7 +179,8 @@ table {
   background: white;
 }
 
-col.name-col { width: 9.5%; }
+col.name-col { width: 8.5%; }
+col.lead-col { width: 2.4%; }
 
 th, td {
   border-right: 1px solid var(--line);
@@ -226,6 +227,12 @@ th {
 .name span.warn { color: var(--bad); font-weight: 700; }
 
 .week-start { border-left: 3px solid #16342c; }
+.lead, th.lead, td.lead { background: #f3efe4; }
+.lead-head { background: #efe6d2; color: #6d5a08; }
+.lead-start { border-left: 3px solid #8a7040; }
+.tag.set { color: #6d5a08; }
+td.lead.mark-d { background: var(--day-bg); }
+td.lead.mark-n { background: var(--night-bg); }
 .weekend { background: var(--weekend); }
 .holiday { background: var(--holiday); }
 

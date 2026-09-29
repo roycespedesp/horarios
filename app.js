@@ -1,5 +1,5 @@
 const H = globalThis.Horario;
-const STORAGE_KEY = "horario-octubre-2026-mariel";
+const STORAGE_KEY = "horario-octubre-2026-setiembre";
 
 const weekMeta = [
   { from: 1, to: 4, label: "1–4 · 1 día y 1 noche" },
@@ -84,6 +84,10 @@ function monthCounts(person) {
   return { day, night };
 }
 
+function leadShift(person, date) {
+  return (H.NOTEBOOK_LEAD[person] && H.NOTEBOOK_LEAD[person][date]) || "";
+}
+
 function badCells() {
   const bad = new Set();
   for (const person of H.STAFF) {
@@ -92,6 +96,10 @@ function badCells() {
         bad.add(`${person}|${date}`);
         bad.add(`${person}|${date + 1}`);
       }
+    }
+    if (leadShift(person, 30) === "N" && board[person][1] === "D") bad.add(`${person}|1`);
+    if (person === "Mariel" && leadShift(person, 30) === "N" && board[person][1] === "N") {
+      bad.add(`${person}|1`);
     }
   }
   return bad;
@@ -120,6 +128,11 @@ function render() {
   const nameCol = document.createElement("col");
   nameCol.className = "name-col";
   colgroup.appendChild(nameCol);
+  for (const lead of H.LEAD_DAYS) {
+    const col = document.createElement("col");
+    col.className = "lead-col";
+    colgroup.appendChild(col);
+  }
   for (let date = 1; date <= 31; date++) {
     colgroup.appendChild(document.createElement("col"));
   }
@@ -129,13 +142,18 @@ function render() {
   weekRow.className = "week-row";
   const corner = document.createElement("th");
   corner.className = "corner";
-  corner.textContent = "Octubre";
+  corner.textContent = "Mes";
   weekRow.appendChild(corner);
+  const leadHead = document.createElement("th");
+  leadHead.colSpan = H.LEAD_DAYS.length;
+  leadHead.className = "lead-head";
+  leadHead.textContent = "28–30 set · cuaderno";
+  weekRow.appendChild(leadHead);
   for (const week of weekMeta) {
     const th = document.createElement("th");
     th.colSpan = week.to - week.from + 1;
     th.textContent = week.label;
-    if (week.from !== 1) th.className = "week-start";
+    th.className = "week-start";
     weekRow.appendChild(th);
   }
 
@@ -145,10 +163,16 @@ function render() {
   nameHead.className = "corner";
   nameHead.textContent = "Persona";
   dayRow.appendChild(nameHead);
+  for (const day of H.LEAD_DAYS) {
+    const th = document.createElement("th");
+    th.className = day.date === 28 ? "lead lead-start" : "lead";
+    th.innerHTML = `<span class="dow">${day.weekday}</span><span class="dom">${day.date}</span><span class="tag set">set</span>`;
+    dayRow.appendChild(th);
+  }
   for (const day of days) {
     const th = document.createElement("th");
     th.className = [
-      day.date === 5 || day.date === 12 || day.date === 19 || day.date === 26 ? "week-start" : "",
+      day.date === 1 || day.date === 5 || day.date === 12 || day.date === 19 || day.date === 26 ? "week-start" : "",
       day.weekend ? "weekend" : "",
       day.holiday ? "holiday" : "",
     ].filter(Boolean).join(" ");
@@ -173,11 +197,28 @@ function render() {
     name.innerHTML = `<b>${person}</b><span class="${expected ? "" : "warn"}">${totals.day} día · ${totals.night} noche</span>`;
     tr.appendChild(name);
 
+    for (const day of H.LEAD_DAYS) {
+      const td = document.createElement("td");
+      const shift = leadShift(person, day.date);
+      const classes = ["lead"];
+      if (day.date === 28) classes.push("lead-start");
+      if (shift === "D") classes.push("mark-d");
+      if (shift === "N") classes.push("mark-n");
+      td.className = classes.join(" ");
+      const mark = document.createElement("span");
+      mark.className = "cell";
+      mark.textContent = shift === "D" ? "D" : shift === "N" ? "N" : "";
+      const label = shift === "D" ? "turno día" : shift === "N" ? "turno noche" : "sin turno";
+      mark.title = `${person}, ${day.date} de setiembre (cuaderno): ${label}.`;
+      td.appendChild(mark);
+      tr.appendChild(td);
+    }
+
     for (const day of days) {
       const td = document.createElement("td");
       const shift = board[person][day.date];
       const classes = [];
-      if (day.date === 5 || day.date === 12 || day.date === 19 || day.date === 26) classes.push("week-start");
+      if (day.date === 1 || day.date === 5 || day.date === 12 || day.date === 19 || day.date === 26) classes.push("week-start");
       if (day.weekend) classes.push("weekend");
       if (day.holiday) classes.push("holiday");
       if (shift === "D") classes.push("mark-d");
@@ -213,13 +254,26 @@ function countRow(label, map, kind) {
   name.className = "name count-label";
   name.textContent = label;
   tr.appendChild(name);
+  for (const day of H.LEAD_DAYS) {
+    const td = document.createElement("td");
+    td.className = day.date === 28 ? "lead lead-start" : "lead";
+    let value = 0;
+    for (const person of H.STAFF) {
+      if (leadShift(person, day.date) === (kind === "day" ? "D" : "N")) value++;
+    }
+    const cls = ["count-num"];
+    if (value < 2 || value > 3) cls.push("low");
+    else if (value === 3) cls.push("high");
+    td.innerHTML = `<span class="${cls.join(" ")}">${value}</span>`;
+    tr.appendChild(td);
+  }
   for (let date = 1; date <= 31; date++) {
     const td = document.createElement("td");
     const value = map[date];
     const cls = ["count-num"];
     if (value < 2 || value > 3) cls.push("low");
     else if (value === 3) cls.push("high");
-    if (date === 5 || date === 12 || date === 19 || date === 26) td.classList.add("week-start");
+    if (date === 1 || date === 5 || date === 12 || date === 19 || date === 26) td.classList.add("week-start");
     td.innerHTML = `<span class="${cls.join(" ")}">${value}</span>`;
     tr.appendChild(td);
   }
@@ -228,17 +282,23 @@ function countRow(label, map, kind) {
 
 function renderRoster(days) {
   rosterEl.replaceChildren();
-  for (const day of days) {
+  const cards = [
+    ...H.LEAD_DAYS.map((day) => ({ ...day, holiday: false })),
+    ...days,
+  ];
+  for (const day of cards) {
     const card = document.createElement("article");
     card.className = "card";
     const dayNames = [];
     const nightNames = [];
     for (const person of H.STAFF) {
-      if (board[person][day.date] === "D") dayNames.push(person);
-      if (board[person][day.date] === "N") nightNames.push(person);
+      const shift = day.setiembre ? leadShift(person, day.date) : board[person][day.date];
+      if (shift === "D") dayNames.push(person);
+      if (shift === "N") nightNames.push(person);
     }
-    card.innerHTML = `<header><span>${day.weekday} ${day.date}</span>${
-      day.holiday ? "<em>feriado</em>" : ""
+    const when = day.setiembre ? `${day.weekday} ${day.date} set` : `${day.weekday} ${day.date}`;
+    card.innerHTML = `<header><span>${when}</span>${
+      day.holiday ? "<em>feriado</em>" : day.setiembre ? "<em>cuaderno</em>" : ""
     }</header>
       <div class="line day"><b>Día</b><span>${dayNames.join(", ") || "—"}</span></div>
       <div class="line night"><b>Noche</b><span>${nightNames.join(", ") || "—"}</span></div>`;
@@ -251,7 +311,7 @@ function renderStatus() {
   const issues = H.validateBoard(board, off);
   statusEl.classList.toggle("bad", issues.length > 0);
   if (!issues.length) {
-    statusEl.textContent = "El horario cumple las reglas: cobertura, días libres y el descanso entre noche y día.";
+    statusEl.textContent = "Octubre cumple las reglas, y encaja con el 30 de setiembre: nadie pasa de esa noche al día del 1, y Mariel no hace esas dos noches seguidas.";
     return;
   }
   statusEl.innerHTML = `<strong>Hay ${issues.length} aviso${issues.length === 1 ? "" : "s"}.</strong><ul>${issues
@@ -330,13 +390,24 @@ function shiftStyle(shift, day) {
 
 function buildExcel() {
   const days = H.octoberDays();
+  const leadHeader = H.LEAD_DAYS.map((day) => excelCell(`${day.date} set`, "setiembre")).join("");
+  const leadWeekdays = H.LEAD_DAYS.map((day) => excelCell(day.weekday, "setiembre")).join("");
   const header = days.map((day) => excelCell(day.holiday ? `${day.date} feriado` : day.date, "encabezado")).join("");
   const weekdays = days.map((day) => excelCell(day.weekday, "encabezado")).join("");
   const peopleRows = H.STAFF.map((person) => {
+    const leadCells = H.LEAD_DAYS.map((day) => excelCell(shiftLabel(leadShift(person, day.date)), shiftStyle(leadShift(person, day.date), day))).join("");
     const cells = days.map((day) => excelCell(shiftLabel(board[person][day.date]), shiftStyle(board[person][day.date], day))).join("");
-    return `<Row>${excelCell(person, "nombre")}${cells}</Row>`;
+    return `<Row>${excelCell(person, "nombre")}${leadCells}${cells}</Row>`;
   }).join("");
 
+  const leadDayCount = H.LEAD_DAYS.map((day) => {
+    const total = H.STAFF.filter((person) => leadShift(person, day.date) === "D").length;
+    return excelCell(total, "cuenta");
+  }).join("");
+  const leadNightCount = H.LEAD_DAYS.map((day) => {
+    const total = H.STAFF.filter((person) => leadShift(person, day.date) === "N").length;
+    return excelCell(total, "cuenta");
+  }).join("");
   const dayCount = days.map((day) => {
     const total = H.STAFF.filter((person) => board[person][day.date] === "D").length;
     return excelCell(total, "cuenta");
@@ -346,6 +417,11 @@ function buildExcel() {
     return excelCell(total, "cuenta");
   }).join("");
 
+  const leadRoster = H.LEAD_DAYS.map((day) => {
+    const dayNames = H.STAFF.filter((person) => leadShift(person, day.date) === "D");
+    const nightNames = H.STAFF.filter((person) => leadShift(person, day.date) === "N");
+    return `<Row>${excelCell(`${day.date} set`, "setiembre")}${excelCell(day.weekday)}${excelCell("Cuaderno")}${excelCell(dayNames.join(", "), "dia")}${excelCell(nightNames.join(", "), "noche")}</Row>`;
+  }).join("");
   const rosterRows = days.map((day) => {
     const dayNames = H.STAFF.filter((person) => board[person][day.date] === "D");
     const nightNames = H.STAFF.filter((person) => board[person][day.date] === "N");
@@ -364,22 +440,25 @@ function buildExcel() {
 <Style ss:ID="feriado"><Interior ss:Color="#FDE8E2" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
 <Style ss:ID="finde"><Interior ss:Color="#F6F4EE" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
 <Style ss:ID="cuenta"><Font ss:Bold="1"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="setiembre"><Font ss:Bold="1"/><Interior ss:Color="#F3EFE4" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
 </Styles>
 <Worksheet ss:Name="Horario">
 <Table>
 <Column ss:Width="110"/>
+${H.LEAD_DAYS.map(() => '<Column ss:Width="78"/>').join("")}
 ${days.map(() => '<Column ss:Width="78"/>').join("")}
-<Row>${excelCell("Persona", "encabezado")}${header}</Row>
-<Row>${excelCell("", "encabezado")}${weekdays}</Row>
+<Row>${excelCell("Persona", "encabezado")}${leadHeader}${header}</Row>
+<Row>${excelCell("", "encabezado")}${leadWeekdays}${weekdays}</Row>
 ${peopleRows}
-<Row>${excelCell("En turno día", "nombre")}${dayCount}</Row>
-<Row>${excelCell("En turno noche", "nombre")}${nightCount}</Row>
+<Row>${excelCell("En turno día", "nombre")}${leadDayCount}${dayCount}</Row>
+<Row>${excelCell("En turno noche", "nombre")}${leadNightCount}${nightCount}</Row>
 </Table>
 </Worksheet>
 <Worksheet ss:Name="Por día">
 <Table>
 <Column ss:Width="60"/><Column ss:Width="70"/><Column ss:Width="80"/><Column ss:Width="220"/><Column ss:Width="220"/>
 <Row>${excelCell("Fecha", "encabezado")}${excelCell("Día", "encabezado")}${excelCell("Nota", "encabezado")}${excelCell("Turno día", "encabezado")}${excelCell("Turno noche", "encabezado")}</Row>
+${leadRoster}
 ${rosterRows}
 </Table>
 </Worksheet>

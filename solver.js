@@ -24,6 +24,36 @@ const DEFAULT_DAYS_OFF = {
 
 const HOLIDAY = 8;
 
+/** 28, 29 y 30 de setiembre, leídos del cuaderno (sin Yeferson). */
+const LEAD_DAYS = [
+  { date: 28, weekday: "lun", setiembre: true },
+  { date: 29, weekday: "mar", setiembre: true },
+  { date: 30, weekday: "mié", setiembre: true },
+];
+
+const NOTEBOOK_LEAD = {
+  Mayra: { 28: "D", 30: "N" },
+  Pamela: { 28: "N", 30: "D" },
+  Ximena: { 29: "D", 30: "D" },
+  Mariel: { 28: "N", 30: "N" },
+  Gabriela: { 29: "N" },
+  Maite: { 29: "N" },
+  Leady: { 29: "D", 30: "D" },
+  Miguel: { 28: "D", 29: "D", 30: "D" },
+};
+
+function leadShift(person, date) {
+  return (NOTEBOOK_LEAD[person] && NOTEBOOK_LEAD[person][date]) || "";
+}
+
+function openingCarry() {
+  const carry = Object.fromEntries(STAFF.map((person) => [person, false]));
+  for (const person of STAFF) {
+    if (leadShift(person, 30) === "N") carry[person] = true;
+  }
+  return carry;
+}
+
 const WEEKDAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 
 function octoberDays(year = 2026) {
@@ -301,7 +331,7 @@ function solveMonth(daysOff, year = 2026, locks = null) {
   const board = emptyBoard();
   applyDaysOff(board, daysOff);
   const weeks = octoberWeeks(year);
-  const carry = Object.fromEntries(STAFF.map((p) => [p, false]));
+  const carry = openingCarry();
   const report = [];
   if (!locks) locks = holidayLocks();
 
@@ -380,6 +410,27 @@ function validateBoard(board, daysOff, year = 2026) {
     if ((person === "Leady" || person === "Ximena") && onHoliday !== "D" && onHoliday !== "N") {
       issues.push(`${person} debe trabajar el 8 de octubre (feriado).`);
     }
+    const leadDates = LEAD_DAYS.map((day) => day.date);
+    for (let i = 0; i < leadDates.length - 1; i++) {
+      const from = leadDates[i];
+      const to = leadDates[i + 1];
+      if (leadShift(person, from) === "N" && leadShift(person, to) === "D") {
+        issues.push(`${person} pasa de noche el ${from} de setiembre a día el ${to}.`);
+      }
+      if (
+        NO_CONSECUTIVE_NIGHTS.has(person) &&
+        leadShift(person, from) === "N" &&
+        leadShift(person, to) === "N"
+      ) {
+        issues.push(`${person} tiene noches seguidas el ${from} y el ${to} de setiembre.`);
+      }
+    }
+    if (leadShift(person, 30) === "N" && board[person][1] === "D") {
+      issues.push(`${person} pasa de noche el 30 de setiembre a día el 1 de octubre.`);
+    }
+    if (NO_CONSECUTIVE_NIGHTS.has(person) && leadShift(person, 30) === "N" && board[person][1] === "N") {
+      issues.push(`${person} tiene noche el 30 de setiembre y también el 1 de octubre.`);
+    }
   }
 
   for (const dates of weeks) {
@@ -417,6 +468,8 @@ globalThis.Horario = {
   STAFF,
   DEFAULT_DAYS_OFF,
   HOLIDAY,
+  LEAD_DAYS,
+  NOTEBOOK_LEAD,
   octoberDays,
   octoberWeeks,
   quotaForWeek,
