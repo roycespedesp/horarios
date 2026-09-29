@@ -1,14 +1,16 @@
 const STAFF = [
-  "Yeferson",
   "Mayra",
   "Pamela",
   "Ximena",
-  "Manel",
+  "Mariel",
   "Gabriela",
   "Maite",
   "Leady",
   "Miguel",
 ];
+
+/** Personas que no pueden encadenar dos noches. */
+const NO_CONSECUTIVE_NIGHTS = new Set(["Mariel"]);
 
 /** Días libres leídos de las celdas resaltadas del cuaderno. */
 const DEFAULT_DAYS_OFF = {
@@ -16,7 +18,7 @@ const DEFAULT_DAYS_OFF = {
   Mayra: [5, 10, 18],
   Leady: [5],
   Maite: [7],
-  Manel: [10, 11, 19, 24],
+  Mariel: [10, 11, 19, 24],
   Gabriela: [11, 12, 19, 30, 31],
 };
 
@@ -82,7 +84,9 @@ function patternKey(pat) {
   return `${pat.D.join(".")}|${pat.N.join(".")}`;
 }
 
-function generatePatterns(days, offSet, locks, quotaD, quotaN, banDay) {
+function generatePatterns(days, offSet, locks, quotaD, quotaN, banDay, options = {}) {
+  const banNight = options.banNight || new Set();
+  const splitNights = Boolean(options.splitNights);
   const lockedD = days.filter((d) => locks[d] === "D");
   const lockedN = days.filter((d) => locks[d] === "N");
   if (lockedD.length > quotaD || lockedN.length > quotaN) return [];
@@ -90,7 +94,7 @@ function generatePatterns(days, offSet, locks, quotaD, quotaN, banDay) {
     if (offSet.has(d) || banDay.has(d)) return [];
   }
   for (const d of lockedN) {
-    if (offSet.has(d)) return [];
+    if (offSet.has(d) || banNight.has(d)) return [];
   }
   const used = new Set([...lockedD, ...lockedN]);
   const free = days.filter((d) => !offSet.has(d) && !used.has(d));
@@ -104,8 +108,11 @@ function generatePatterns(days, offSet, locks, quotaD, quotaN, banDay) {
       const D = [...lockedD, ...dComb].sort((a, b) => a - b);
       const N = [...lockedN, ...nComb].sort((a, b) => a - b);
       if (D.some((d) => banDay.has(d))) continue;
+      if (N.some((n) => banNight.has(n))) continue;
       const dset = new Set(D);
+      const nset = new Set(N);
       if (N.some((n) => dset.has(n + 1))) continue;
+      if (splitNights && N.some((n) => nset.has(n + 1))) continue;
       const pat = { D, N };
       const key = patternKey(pat);
       if (seen.has(key)) continue;
@@ -151,14 +158,19 @@ function solveWeek(days, off, locks, carryNight, quota, seed = 1) {
     const offSet = new Set(off[person] || []);
     const personLocks = (locks && locks[person]) || {};
     const ban = new Set();
+    const banNight = new Set();
     if (carryNight && carryNight[person]) ban.add(days[0]);
+    if (NO_CONSECUTIVE_NIGHTS.has(person) && carryNight && carryNight[person]) {
+      banNight.add(days[0]);
+    }
     patterns[person] = generatePatterns(
       days,
       offSet,
       personLocks,
       quota.day,
       quota.night,
-      ban
+      ban,
+      { banNight, splitNights: NO_CONSECUTIVE_NIGHTS.has(person) }
     );
     if (!patterns[person].length) {
       return {
@@ -354,6 +366,14 @@ function validateBoard(board, daysOff, year = 2026) {
       }
       if (date < 31 && board[person][date] === "N" && board[person][date + 1] === "D") {
         issues.push(`${person} pasa de noche el ${date} a día el ${date + 1} (24 horas).`);
+      }
+      if (
+        NO_CONSECUTIVE_NIGHTS.has(person) &&
+        date < 31 &&
+        board[person][date] === "N" &&
+        board[person][date + 1] === "N"
+      ) {
+        issues.push(`${person} tiene noches seguidas el ${date} y el ${date + 1}.`);
       }
     }
     const onHoliday = board[person][HOLIDAY];

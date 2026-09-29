@@ -1,5 +1,5 @@
 const H = globalThis.Horario;
-const STORAGE_KEY = "horario-octubre-2026-fijo";
+const STORAGE_KEY = "horario-octubre-2026-mariel";
 
 const weekMeta = [
   { from: 1, to: 4, label: "1–4 · 1 día y 1 noche" },
@@ -67,7 +67,7 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && parsed.board && parsed.board.Yeferson) return parsed;
+    if (parsed && parsed.board && parsed.board.Mariel && !parsed.board.Yeferson) return parsed;
   } catch (error) {
     return null;
   }
