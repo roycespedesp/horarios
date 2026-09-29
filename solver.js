@@ -12,6 +12,9 @@ const STAFF = [
 /** Personas que no pueden encadenar dos noches. */
 const NO_CONSECUTIVE_NIGHTS = new Set(["Mariel"]);
 
+/** Solo turno día. */
+const DAY_ONLY = new Set(["Ximena"]);
+
 /** Días libres leídos de las celdas resaltadas del cuaderno. */
 const DEFAULT_DAYS_OFF = {
   Ximena: [1],
@@ -91,6 +94,24 @@ function octoberWeeks(year = 2026) {
 function quotaForWeek(dates) {
   if (dates.length <= 4) return { day: 1, night: 1 };
   return { day: 2, night: 2 };
+}
+
+function quotaForPerson(person, dates) {
+  const quota = quotaForWeek(dates);
+  if (DAY_ONLY.has(person)) return { day: quota.day, night: 0 };
+  return quota;
+}
+
+function quotasForWeek(dates, extraNightPerson) {
+  const quotas = {};
+  for (const person of STAFF) quotas[person] = quotaForPerson(person, dates);
+  if (extraNightPerson && !DAY_ONLY.has(extraNightPerson)) {
+    quotas[extraNightPerson] = {
+      day: quotas[extraNightPerson].day,
+      night: quotas[extraNightPerson].night + 1,
+    };
+  }
+  return quotas;
 }
 
 function combinations(items, k) {
@@ -179,10 +200,13 @@ function mulberry32(seed) {
  * locks: { persona: { [dia]: "D"|"N" } }
  * carryNight: { persona: boolean } noche el día anterior al inicio
  */
-function solveWeek(days, off, locks, carryNight, quota, seed = 1) {
+function solveWeek(days, off, locks, carryNight, quotas, seed = 1) {
   const rnd = mulberry32(seed);
-  const maxPerShift = 3;
   const people = STAFF.slice();
+  const nightBudget = people.reduce((sum, person) => sum + quotas[person].night, 0);
+  const dayBudget = people.reduce((sum, person) => sum + quotas[person].day, 0);
+  const maxNight = nightBudget === days.length * 2 ? 2 : 3;
+  const maxDay = dayBudget <= days.length * 2 ? 2 : 3;
   const patterns = {};
   for (const person of people) {
     const offSet = new Set(off[person] || []);
@@ -197,8 +221,8 @@ function solveWeek(days, off, locks, carryNight, quota, seed = 1) {
       days,
       offSet,
       personLocks,
-      quota.day,
-      quota.night,
+      quotas[person].day,
+      quotas[person].night,
       ban,
       { banNight, splitNights: NO_CONSECUTIVE_NIGHTS.has(person) }
     );
@@ -225,21 +249,21 @@ function solveWeek(days, off, locks, carryNight, quota, seed = 1) {
       for (const d of pat.D) {
         const c = countD[d];
         if (c < 2) s += 5 - c;
-        else if (c >= maxPerShift) s -= 8;
+        else if (c >= maxDay) s -= 8;
         else s -= 0.4;
       }
       for (const n of pat.N) {
         const c = countN[n];
         if (c < 2) s += 5 - c;
-        else if (c >= maxPerShift) s -= 8;
+        else if (c >= maxNight) s -= 8;
         else s -= 0.4;
       }
       return s;
     }
 
     function feasible(pat) {
-      for (const d of pat.D) if (countD[d] + 1 > maxPerShift) return false;
-      for (const n of pat.N) if (countN[n] + 1 > maxPerShift) return false;
+      for (const d of pat.D) if (countD[d] + 1 > maxDay) return false;
+      for (const n of pat.N) if (countN[n] + 1 > maxNight) return false;
       return true;
     }
 
@@ -255,11 +279,16 @@ function solveWeek(days, off, locks, carryNight, quota, seed = 1) {
         needD += Math.max(0, 2 - countD[d]);
         needN += Math.max(0, 2 - countN[d]);
       }
-      const left = people.length - idx;
-      if (needD > left * quota.day) return false;
-      if (needN > left * quota.night) return false;
+      let capD = 0;
+      let capN = 0;
+      for (let i = idx; i < people.length; i++) {
+        capD += quotas[people[i]].day;
+        capN += quotas[people[i]].night;
+      }
+      if (needD > capD) return false;
+      if (needN > capN) return false;
       for (const d of days) {
-        if (countD[d] > maxPerShift || countN[d] > maxPerShift) return false;
+        if (countD[d] > maxDay || countN[d] > maxNight) return false;
       }
       return true;
     }
@@ -274,7 +303,7 @@ function solveWeek(days, off, locks, carryNight, quota, seed = 1) {
       const ranked = patterns[person]
         .map((pat) => ({ pat, s: score(pat) }))
         .sort((a, b) => b.s - a.s);
-      const beam = Math.min(ranked.length, patterns[person].length < 30 ? ranked.length : 18);
+      const beam = Math.min(ranked.length, patterns[person].length < 40 ? ranked.length : 28);
       for (let k = 0; k < beam; k++) {
         const pat = ranked[k].pat;
         if (!feasible(pat)) continue;
@@ -293,15 +322,15 @@ function solveWeek(days, off, locks, carryNight, quota, seed = 1) {
 
   for (let attempt = 0; attempt < 12; attempt++) {
     const found = search(seed + attempt * 97 + Math.floor(rnd() * 1000));
-    if (found) return { ok: true, ...found, quota };
+    if (found) return { ok: true, ...found, quotas };
   }
   return { ok: false, reason: "No encontré una combinación que cubra todos los turnos." };
 }
 
 function holidayLocks() {
   return {
-    Leady: { [HOLIDAY]: "D" },
-    Ximena: { [HOLIDAY]: "N" },
+    Leady: { [HOLIDAY]: "N" },
+    Ximena: { [HOLIDAY]: "D" },
   };
 }
 
@@ -334,52 +363,82 @@ function solveMonth(daysOff, year = 2026, locks = null) {
   const carry = openingCarry();
   const report = [];
   if (!locks) locks = holidayLocks();
+  for (const person of STAFF) {
+    if (!DAY_ONLY.has(person)) continue;
+    for (const date of Object.keys((locks && locks[person]) || {})) {
+      if (locks[person][date] === "N") {
+        return {
+          ok: false,
+          board,
+          report,
+          reason: `${person} no hace turno noche. En el feriado va de día.`,
+        };
+      }
+    }
+  }
 
-  for (const dates of weeks) {
-    const quota = quotaForWeek(dates);
+  function weekLocksFor(dates) {
     const weekLocks = {};
     for (const person of STAFF) {
       weekLocks[person] = {};
       for (const date of dates) {
         if (locks[person] && locks[person][date]) {
           if ((daysOff[person] || []).includes(date)) {
-            return {
-              ok: false,
-              board,
-              report,
-              reason: `${person} está libre el ${date} y también debe trabajar el feriado.`,
-            };
+            return { error: `${person} está libre el ${date} y también debe trabajar el feriado.` };
           }
           weekLocks[person][date] = locks[person][date];
         }
       }
     }
-    const solved = solveWeek(dates, daysOff, weekLocks, carry, quota, 40 + dates[0] * 13);
-    if (!solved.ok) {
-      return {
-        ok: false,
-        board,
-        report,
-        reason: `Semana del ${dates[0]} al ${dates[dates.length - 1]}: ${solved.reason}`,
-      };
-    }
-    for (const person of STAFF) {
-      const pat = solved.chosen[person];
-      for (const d of pat.D) board[person][d] = "D";
-      for (const n of pat.N) board[person][n] = "N";
-      const last = dates[dates.length - 1];
-      carry[person] = pat.N.includes(last);
-    }
-    report.push({
-      from: dates[0],
-      to: dates[dates.length - 1],
-      quota,
-      countD: solved.countD,
-      countN: solved.countN,
-    });
+    return { weekLocks };
   }
 
-  return { ok: true, board, report, reason: "" };
+  function placeWeek(sourceBoard, sourceCarry, dates, extra) {
+    const prepared = weekLocksFor(dates);
+    if (prepared.error) return { ok: false, reason: prepared.error };
+    const quotas = quotasForWeek(dates, extra);
+    const solved = solveWeek(
+      dates,
+      daysOff,
+      prepared.weekLocks,
+      sourceCarry,
+      quotas,
+      40 + dates[0] * 13 + (extra ? extra.length : 0)
+    );
+    if (!solved.ok) {
+      return { ok: false, reason: `Semana del ${dates[0]} al ${dates[dates.length - 1]}: ${solved.reason}` };
+    }
+    const nextBoard = emptyBoard();
+    for (const person of STAFF) {
+      for (let date = 1; date <= 31; date++) nextBoard[person][date] = sourceBoard[person][date];
+      const pat = solved.chosen[person];
+      for (const d of pat.D) nextBoard[person][d] = "D";
+      for (const n of pat.N) nextBoard[person][n] = "N";
+    }
+    const nextCarry = {};
+    const last = dates[dates.length - 1];
+    for (const person of STAFF) nextCarry[person] = solved.chosen[person].N.includes(last);
+    return { ok: true, board: nextBoard, carry: nextCarry, solved };
+  }
+
+  const shortExtras = ["Pamela", "Miguel", "Gabriela", "Leady", "Maite", "Mayra", "Mariel"];
+  let lastReason = "No encontré una combinación que cubra todos los turnos.";
+  for (const extra of shortExtras) {
+    let current = { board, carry };
+    let failed = false;
+    for (const dates of weeks) {
+      const step = placeWeek(current.board, current.carry, dates, dates.length <= 4 ? extra : null);
+      if (!step.ok) {
+        lastReason = step.reason;
+        failed = true;
+        break;
+      }
+      current = step;
+    }
+    if (!failed) return { ok: true, board: current.board, report, reason: "" };
+  }
+
+  return { ok: false, board, report, reason: lastReason };
 }
 
 function validateBoard(board, daysOff, year = 2026) {
@@ -388,6 +447,9 @@ function validateBoard(board, daysOff, year = 2026) {
   for (const person of STAFF) {
     for (let date = 1; date <= 31; date++) {
       const shift = board[person][date];
+      if (DAY_ONLY.has(person) && shift === "N") {
+        issues.push(`${person} no hace turno noche.`);
+      }
       if ((daysOff[person] || []).includes(date) && shift && shift !== "L") {
         issues.push(`${person} tiene turno el ${date}, pero ese día está libre.`);
       }
@@ -407,8 +469,11 @@ function validateBoard(board, daysOff, year = 2026) {
       }
     }
     const onHoliday = board[person][HOLIDAY];
-    if ((person === "Leady" || person === "Ximena") && onHoliday !== "D" && onHoliday !== "N") {
-      issues.push(`${person} debe trabajar el 8 de octubre (feriado).`);
+    if (person === "Ximena" && onHoliday !== "D") {
+      issues.push("Ximena debe trabajar el 8 de octubre de día.");
+    }
+    if (person === "Leady" && onHoliday !== "D" && onHoliday !== "N") {
+      issues.push("Leady debe trabajar el 8 de octubre (feriado).");
     }
     const leadDates = LEAD_DAYS.map((day) => day.date);
     for (let i = 0; i < leadDates.length - 1; i++) {
@@ -434,7 +499,7 @@ function validateBoard(board, daysOff, year = 2026) {
   }
 
   for (const dates of weeks) {
-    const quota = quotaForWeek(dates);
+    const counts = {};
     for (const person of STAFF) {
       let d = 0;
       let n = 0;
@@ -442,9 +507,20 @@ function validateBoard(board, daysOff, year = 2026) {
         if (board[person][date] === "D") d++;
         if (board[person][date] === "N") n++;
       }
-      if (d !== quota.day || n !== quota.night) {
+      counts[person] = { d, n };
+      const quota = quotaForPerson(person, dates);
+      const nightOk = dates.length <= 4 && !DAY_ONLY.has(person) ? n === 1 || n === 2 : n === quota.night;
+      if (d !== quota.day || !nightOk) {
         issues.push(
-          `${person} en la semana del ${dates[0]} al ${dates[dates.length - 1]} tiene ${d} día y ${n} noche (corresponde ${quota.day} y ${quota.night}).`
+          `${person} en la semana del ${dates[0]} al ${dates[dates.length - 1]} tiene ${d} día y ${n} noche (corresponde ${quota.day} día y ${quota.night} noche).`
+        );
+      }
+    }
+    if (dates.length <= 4) {
+      const extras = STAFF.filter((person) => counts[person].n === 2);
+      if (extras.length !== 1) {
+        issues.push(
+          `En la semana del ${dates[0]} al ${dates[dates.length - 1]} hace falta una noche extra para cubrir el turno que Ximena no hace.`
         );
       }
     }
@@ -466,6 +542,7 @@ function validateBoard(board, daysOff, year = 2026) {
 
 globalThis.Horario = {
   STAFF,
+  DAY_ONLY,
   DEFAULT_DAYS_OFF,
   HOLIDAY,
   LEAD_DAYS,

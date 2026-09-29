@@ -1,5 +1,5 @@
 const H = globalThis.Horario;
-const STORAGE_KEY = "horario-octubre-2026-setiembre";
+const STORAGE_KEY = "horario-octubre-2026-ximena-dia";
 
 const weekMeta = [
   { from: 1, to: 4, label: "1–4 · 1 día y 1 noche" },
@@ -48,11 +48,8 @@ function collectDaysOff(source) {
 }
 
 function locksFromForm() {
-  const mode = feriadoEl.value;
-  if (mode === "ND") return { Leady: { 8: "N" }, Ximena: { 8: "D" } };
-  if (mode === "DD") return { Leady: { 8: "D" }, Ximena: { 8: "D" } };
-  if (mode === "NN") return { Leady: { 8: "N" }, Ximena: { 8: "N" } };
-  return { Leady: { 8: "D" }, Ximena: { 8: "N" } };
+  if (feriadoEl.value === "DD") return { Leady: { 8: "D" }, Ximena: { 8: "D" } };
+  return { Leady: { 8: "N" }, Ximena: { 8: "D" } };
 }
 
 function save() {
@@ -193,7 +190,9 @@ function render() {
     const totals = monthCounts(person);
     const name = document.createElement("td");
     name.className = "name";
-    const expected = totals.day === 9 && totals.night === 9;
+    const expected = person === "Ximena"
+      ? totals.day === 9 && totals.night === 0
+      : totals.day === 9 && (totals.night === 9 || totals.night === 10);
     name.innerHTML = `<b>${person}</b><span class="${expected ? "" : "warn"}">${totals.day} día · ${totals.night} noche</span>`;
     tr.appendChild(name);
 
@@ -311,7 +310,7 @@ function renderStatus() {
   const issues = H.validateBoard(board, off);
   statusEl.classList.toggle("bad", issues.length > 0);
   if (!issues.length) {
-    statusEl.textContent = "Octubre cumple las reglas, y encaja con el 30 de setiembre: nadie pasa de esa noche al día del 1, y Mariel no hace esas dos noches seguidas.";
+    statusEl.textContent = "Ximena solo tiene turnos de día. El resto cubre las noches, octubre cumple las reglas y encaja con el 30 de setiembre.";
     return;
   }
   statusEl.innerHTML = `<strong>Hay ${issues.length} aviso${issues.length === 1 ? "" : "s"}.</strong><ul>${issues
@@ -351,7 +350,7 @@ function clearShifts() {
 
 function resetOff() {
   board = applyDefaultOff(blankBoard());
-  feriadoEl.value = "DN";
+  feriadoEl.value = "ND";
   generate();
 }
 
